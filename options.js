@@ -1,16 +1,5 @@
 'use strict';
 
-const OPT_BOOL = ['enabled', 'debug'];
-const OPT_TEXT = ['apiKey', 'newChannelCutoff', 'rateSince'];
-const OPT_ENUM = { blockMode: ['hide', 'dim'] };
-const OPT_NUM = {
-  maxPerWeek: [0, 1000],
-  minSubscribers: [0, 1e10],
-  cacheDays: [0, 365],
-  maxUploadPages: [1, 20]
-};
-const OPT_IMPORT_MAX_BYTES = 2 * 1024 * 1024;
-
 function optStatus(msg, cls) {
   const el = document.getElementById('status');
   el.textContent = msg;
@@ -25,13 +14,14 @@ async function optLoad() {
     try {
       s = await chrome.storage.sync.get(SG_DEFAULTS);
     } catch (e) {
-      optStatus('Could not load settings: ' + e.message, 'err');
+      optStatus(sgFormat(SG_TXT_OPT_LOAD_FAILED, e.message), 'err');
       break;
     }
     OPT_BOOL.forEach((k) => { document.getElementById(k).checked = !!s[k]; });
     OPT_TEXT.forEach((k) => { document.getElementById(k).value = String(s[k] ?? ''); });
     Object.keys(OPT_ENUM).forEach((k) => { document.getElementById(k).value = String(s[k]); });
     Object.keys(OPT_NUM).forEach((k) => { document.getElementById(k).value = String(s[k]); });
+    sgSetLogLevel(s.logLevel);
   }
   while (CONDITION_LADDER_END);
   sgExit();
@@ -46,9 +36,9 @@ async function optSave() {
     OPT_TEXT.forEach((k) => { out[k] = document.getElementById(k).value.trim(); });
 
     let bad = '';
-    for (const k of ['newChannelCutoff', 'rateSince']) {
+    for (const k of OPT_DATES) {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(out[k]) || !Number.isFinite(Date.parse(out[k]))) {
-        bad = k + ' must be a valid date';
+        bad = sgFormat(SG_TXT_OPT_BAD_DATE, k);
         break;
       }
     }
@@ -59,7 +49,7 @@ async function optSave() {
     for (const [k, allowed] of Object.entries(OPT_ENUM)) {
       const v = document.getElementById(k).value;
       if (!allowed.includes(v)) {
-        bad = `${k} must be one of ${allowed.join(', ')}`;
+        bad = sgFormat(SG_TXT_OPT_BAD_ENUM, k, allowed.join(SG_TXT_OPT_ENUM_SEPARATOR));
         break;
       }
       out[k] = v;
@@ -71,7 +61,7 @@ async function optSave() {
     for (const [k, [lo, hi]] of Object.entries(OPT_NUM)) {
       const v = Number(document.getElementById(k).value);
       if (!Number.isFinite(v) || v < lo || v > hi) {
-        bad = `${k} must be between ${lo} and ${hi}`;
+        bad = sgFormat(SG_TXT_OPT_BAD_RANGE, k, lo, hi);
         break;
       }
       out[k] = v;
@@ -84,10 +74,11 @@ async function optSave() {
     try {
       await chrome.storage.sync.set(out);
     } catch (e) {
-      optStatus('Save failed: ' + e.message, 'err');
+      optStatus(sgFormat(SG_TXT_OPT_SAVE_FAILED, e.message), 'err');
       break;
     }
-    optStatus('Saved. Open YouTube tabs update automatically.', 'ok');
+    sgSetLogLevel(out.logLevel);
+    optStatus(SG_TXT_OPT_SAVED, 'ok');
     retVal = true;
   }
   while (CONDITION_LADDER_END);
@@ -102,11 +93,11 @@ async function optSend(type, okMsg) {
     try {
       r = await chrome.runtime.sendMessage({ type: type });
     } catch (e) {
-      optStatus('Failed: ' + e.message, 'err');
+      optStatus(sgFormat(SG_TXT_OPT_FAILED, e.message), 'err');
       break;
     }
     if (!r || !r.ok) {
-      optStatus('Failed: ' + ((r && r.error) || 'no response'), 'err');
+      optStatus(sgFormat(SG_TXT_OPT_FAILED, (r && r.error) || SG_TXT_OPT_NO_RESPONSE), 'err');
       break;
     }
     optStatus(okMsg(r), 'ok');
@@ -122,11 +113,11 @@ function optChannelUrl(id, entry) {
   let retVal = '';
   do {
     if (/^UC[A-Za-z0-9_-]{22}$/.test(id)) {
-      retVal = 'https://www.youtube.com/channel/' + id;
+      retVal = SG_YT_CHANNEL_URL + id;
       break;
     }
     if (entry.handle && entry.handle.startsWith('@')) {
-      retVal = 'https://www.youtube.com/' + encodeURIComponent(entry.handle).replace('%40', '@');
+      retVal = SG_YT_BASE_URL + encodeURIComponent(entry.handle).replace('%40', '@');
       break;
     }
   }
@@ -145,13 +136,13 @@ function optRenderTable(tableId, countId, listName, list) {
       const tb = (list[b].title || list[b].handle || b).toLowerCase();
       return ta.localeCompare(tb);
     });
-    count.textContent = '(' + ids.length + ')';
+    count.textContent = sgFormat(SG_TXT_OPT_LIST_COUNT, ids.length);
 
     if (ids.length === 0) {
       const tr = table.insertRow();
       const td = tr.insertCell();
       td.className = 'empty';
-      td.textContent = 'None yet';
+      td.textContent = SG_TXT_OPT_LIST_EMPTY;
       break;
     }
 
@@ -173,7 +164,7 @@ function optRenderTable(tableId, countId, listName, list) {
         tdName.textContent = label;
       }
       if (e.title && e.handle) {
-        tdName.appendChild(document.createTextNode('  ' + e.handle));
+        tdName.appendChild(document.createTextNode(sgFormat(SG_TXT_OPT_LIST_HANDLE, e.handle)));
       }
 
       const tdWhen = tr.insertCell();
@@ -183,10 +174,10 @@ function optRenderTable(tableId, countId, listName, list) {
       const tdAct = tr.insertCell();
       tdAct.className = 'act';
       const btn = document.createElement('button');
-      btn.textContent = 'Remove';
+      btn.textContent = SG_TXT_OPT_REMOVE;
       btn.addEventListener('click', async () => {
         const ok = await sgSetListMembership(id, null, null);
-        optStatus(ok ? `Removed "${label}" from ${listName}.` : 'Remove failed.', ok ? 'ok' : 'err');
+        optStatus(ok ? sgFormat(SG_TXT_OPT_REMOVED, label, listName) : SG_TXT_OPT_REMOVE_FAILED, ok ? 'ok' : 'err');
       });
       tdAct.appendChild(btn);
     }
@@ -205,17 +196,17 @@ async function optExport() {
   sgEntry();
   do {
     const lists = await sgLoadLists();
-    const payload = { format: 'slop-gauge-lists', version: 1, exportedAt: new Date().toISOString(), lists: lists };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const payload = { format: SG_EXPORT_FORMAT, version: SG_EXPORT_VERSION, exportedAt: new Date().toISOString(), lists: lists };
+    const blob = new Blob([JSON.stringify(payload, null, SG_EXPORT_JSON_INDENT)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'slop-gauge-lists-' + new Date().toISOString().slice(0, 10) + '.json';
+    a.download = sgFormat(SG_TXT_OPT_EXPORT_FILE_NAME, new Date().toISOString().slice(0, SG_ISO_DATE_LENGTH));
     document.body.appendChild(a);
     a.click();
     a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 5000);
-    optStatus('Exported.', 'ok');
+    setTimeout(() => URL.revokeObjectURL(url), SG_EXPORT_URL_REVOKE_MS);
+    optStatus(SG_TXT_OPT_EXPORTED, 'ok');
   }
   while (CONDITION_LADDER_END);
   sgExit();
@@ -228,25 +219,25 @@ async function optImport(file) {
       break;
     }
     if (file.size > OPT_IMPORT_MAX_BYTES) {
-      optStatus('Import file is too large.', 'err');
+      optStatus(SG_TXT_OPT_IMPORT_TOO_LARGE, 'err');
       break;
     }
     let text = '';
     try {
       text = await file.text();
     } catch (e) {
-      optStatus('Could not read file: ' + e.message, 'err');
+      optStatus(sgFormat(SG_TXT_OPT_IMPORT_READ_FAILED, e.message), 'err');
       break;
     }
     let parsed = null;
     try {
       parsed = JSON.parse(text);
     } catch (e) {
-      optStatus('Not valid JSON.', 'err');
+      optStatus(SG_TXT_OPT_IMPORT_BAD_JSON, 'err');
       break;
     }
-    if (!parsed || parsed.format !== 'slop-gauge-lists' || !parsed.lists) {
-      optStatus('Not a Slop Gauge lists export.', 'err');
+    if (!parsed || !SG_IMPORT_FORMATS.includes(parsed.format) || !parsed.lists) {
+      optStatus(SG_TXT_OPT_IMPORT_WRONG_FORMAT, 'err');
       break;
     }
     const incoming = sgValidateLists(parsed.lists);
@@ -263,7 +254,7 @@ async function optImport(file) {
       }
     }
     const ok = await sgSaveLists(current);
-    optStatus(ok ? `Imported ${added} channel(s).` : 'Import failed while saving.', ok ? 'ok' : 'err');
+    optStatus(ok ? sgFormat(SG_TXT_OPT_IMPORTED, added) : SG_TXT_OPT_IMPORT_SAVE_FAILED, ok ? 'ok' : 'err');
   }
   while (CONDITION_LADDER_END);
   sgExit();
@@ -273,11 +264,11 @@ async function optImport(file) {
 document.getElementById('save').addEventListener('click', optSave);
 document.getElementById('test').addEventListener('click', async () => {
   if (await optSave()) {
-    optSend('testKey', () => 'API key works.');
+    optSend('testKey', () => SG_TXT_OPT_KEY_WORKS);
   }
 });
 document.getElementById('clear').addEventListener('click', () => {
-  optSend('clearCache', (r) => `Cleared ${r.removed} cached channel(s). Refresh YouTube tabs.`);
+  optSend('clearCache', (r) => sgFormat(SG_TXT_OPT_CACHE_CLEARED, r.removed));
 });
 document.getElementById('export').addEventListener('click', optExport);
 document.getElementById('import').addEventListener('click', () => {

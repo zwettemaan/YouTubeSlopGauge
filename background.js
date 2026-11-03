@@ -6,9 +6,6 @@
 
 importScripts('common.js');
 
-const API_BASE = 'https://www.googleapis.com/youtube/v3/';
-const QUOTA_BACKOFF_MS = 60 * 60 * 1000; // pause API use for an hour after quotaExceeded
-
 const inflight = new Map();   // cacheKey -> Promise (dedupes concurrent lookups)
 let quotaBlockedUntil = 0;
 
@@ -21,7 +18,7 @@ async function getSettings() {
     try {
       s = await chrome.storage.sync.get(SG_DEFAULTS);
     } catch (e) {
-      sgWarn('storage.sync.get failed', e);
+      sgError('storage.sync.get failed', e);
       break;
     }
     if (!s || typeof s !== 'object') {
@@ -29,7 +26,7 @@ async function getSettings() {
       break;
     }
     retVal = s;
-    sgSetDebug(retVal.debug);
+    sgSetLogLevel(retVal.logLevel);
   }
   while (CONDITION_LADDER_END);
   sgExit('(settings loaded)'); // never log the API key
@@ -38,16 +35,16 @@ async function getSettings() {
 
 /* ------------------------------------------------------------------------- */
 async function apiGet(endpoint, params, apiKey) {
-  let retVal = { ok: false, data: null, error: 'unknown error', reason: 'unknown' };
+  let retVal = { ok: false, data: null, error: SG_TXT_UNKNOWN_ERROR, reason: 'unknown' };
   sgEntry(endpoint);
   do {
     if (typeof apiKey !== 'string' || apiKey.trim() === '') {
-      retVal.error = 'No API key set - open the extension options';
+      retVal.error = SG_TXT_ERR_NO_KEY;
       retVal.reason = 'noKey';
       break;
     }
     if (Date.now() < quotaBlockedUntil) {
-      retVal.error = 'YouTube API daily quota exhausted - paused';
+      retVal.error = SG_TXT_ERR_QUOTA;
       retVal.reason = 'quotaExceeded';
       break;
     }
@@ -59,7 +56,7 @@ async function apiGet(endpoint, params, apiKey) {
 
     let url;
     try {
-      url = new URL(API_BASE + endpoint);
+      url = new URL(SG_API_BASE + endpoint);
     } catch (e) {
       retVal.error = 'Bad endpoint';
       retVal.reason = 'badParams';
@@ -74,7 +71,7 @@ async function apiGet(endpoint, params, apiKey) {
     try {
       resp = await fetch(url.toString(), { method: 'GET', credentials: 'omit' });
     } catch (e) {
-      retVal.error = 'Network error: ' + (e && e.message ? e.message : String(e));
+      retVal.error = sgFormat(SG_TXT_ERR_NETWORK, e && e.message ? e.message : String(e));
       retVal.reason = 'network';
       break;
     }
@@ -90,9 +87,9 @@ async function apiGet(endpoint, params, apiKey) {
       const reason = (json && json.error && Array.isArray(json.error.errors) && json.error.errors[0]
         && json.error.errors[0].reason) || ('http' + resp.status);
       retVal.reason = reason;
-      retVal.error = (json && json.error && json.error.message) || ('HTTP ' + resp.status);
+      retVal.error = (json && json.error && json.error.message) || sgFormat(SG_TXT_ERR_HTTP, resp.status);
       if (reason === 'quotaExceeded' || reason === 'dailyLimitExceeded' || reason === 'rateLimitExceeded') {
-        quotaBlockedUntil = Date.now() + QUOTA_BACKOFF_MS;
+        quotaBlockedUntil = Date.now() + SG_QUOTA_BACKOFF_MS;
       }
       sgWarn(endpoint, resp.status, reason);
       break;
@@ -113,7 +110,7 @@ async function apiGet(endpoint, params, apiKey) {
 
 /* ------------------------------------------------------------------------- */
 async function fetchChannel(key, apiKey) {
-  let retVal = { ok: false, channel: null, error: 'unknown error', reason: 'unknown' };
+  let retVal = { ok: false, channel: null, error: SG_TXT_UNKNOWN_ERROR, reason: 'unknown' };
   sgEntry(key);
   do {
     const params = { part: 'snippet,statistics,contentDetails' };
@@ -135,7 +132,7 @@ async function fetchChannel(key, apiKey) {
     }
     const items = Array.isArray(r.data.items) ? r.data.items : [];
     if (items.length === 0) {
-      retVal.error = 'Channel not found';
+      retVal.error = SG_TXT_ERR_NOT_FOUND;
       retVal.reason = 'notFound';
       break;
     }
@@ -159,7 +156,7 @@ async function fetchChannel(key, apiKey) {
  * (newest first). Stops at the first page containing an older video, or at maxPages.
  */
 async function countUploadsSince(playlistId, sinceMs, apiKey, maxPages) {
-  let retVal = { ok: false, count: 0, truncated: false, error: 'unknown error', reason: 'unknown' };
+  let retVal = { ok: false, count: 0, truncated: false, error: SG_TXT_UNKNOWN_ERROR, reason: 'unknown' };
   sgEntry(playlistId, maxPages);
   do {
     if (typeof playlistId !== 'string' || playlistId === '') {
@@ -168,11 +165,11 @@ async function countUploadsSince(playlistId, sinceMs, apiKey, maxPages) {
       break;
     }
     if (!Number.isFinite(sinceMs)) {
-      retVal.error = 'Bad rateSince date';
+      retVal.error = SG_TXT_ERR_BAD_RATE_SINCE;
       retVal.reason = 'badParams';
       break;
     }
-    const pageCap = Math.max(1, Math.min(20, Math.floor(Number(maxPages) || 1)));
+    const pageCap = Math.max(SG_MIN_UPLOAD_PAGES, Math.min(SG_MAX_UPLOAD_PAGES, Math.floor(Number(maxPages) || SG_MIN_UPLOAD_PAGES)));
 
     let count = 0;
     let truncated = false;
@@ -185,7 +182,7 @@ async function countUploadsSince(playlistId, sinceMs, apiKey, maxPages) {
         truncated = true;
         break;
       }
-      const params = { part: 'contentDetails', playlistId: playlistId, maxResults: 50 };
+      const params = { part: 'contentDetails', playlistId: playlistId, maxResults: SG_API_PAGE_SIZE };
       if (pageToken) {
         params.pageToken = pageToken;
       }
@@ -244,14 +241,14 @@ async function readCache(ck, settings) {
     try {
       got = await chrome.storage.local.get(ck);
     } catch (e) {
-      sgWarn('storage.local.get failed', e);
+      sgError('storage.local.get failed', e);
       break;
     }
     const entry = got ? got[ck] : null;
     if (!entry || typeof entry !== 'object') {
       break;
     }
-    const maxAge = Math.max(0, Number(settings.cacheDays) || 0) * 24 * 60 * 60 * 1000;
+    const maxAge = Math.max(0, Number(settings.cacheDays) || 0) * SG_DAY_MS;
     if (!Number.isFinite(entry.fetchedAt) || Date.now() - entry.fetchedAt > maxAge) {
       break; // expired
     }
@@ -280,7 +277,7 @@ async function writeCache(keys, entry) {
     try {
       await chrome.storage.local.set(obj);
     } catch (e) {
-      sgWarn('storage.local.set failed', e);
+      sgError('storage.local.set failed', e);
     }
   }
   while (CONDITION_LADDER_END);
@@ -289,7 +286,7 @@ async function writeCache(keys, entry) {
 
 /* ------------------------------------------------------------------------- */
 async function buildChannelStats(key, ck) {
-  let retVal = { ok: false, error: 'unknown error', reason: 'unknown' };
+  let retVal = { ok: false, error: SG_TXT_UNKNOWN_ERROR, reason: 'unknown' };
   sgEntry(ck);
   do {
     const settings = await getSettings();
@@ -323,7 +320,7 @@ async function buildChannelStats(key, ck) {
     const now = Date.now();
     const createdMs = Date.parse(ch.snippet.publishedAt);
     const startMs = Math.max(sinceMs, Number.isFinite(createdMs) ? createdMs : sinceMs);
-    const weeks = Math.max((now - startMs) / SG_WEEK_MS, 1); // floor at 1 week to avoid silly rates
+    const weeks = Math.max((now - startMs) / SG_WEEK_MS, SG_MIN_RATE_WEEKS);
     const hidden = !!ch.statistics.hiddenSubscriberCount;
     const subs = hidden ? null : Number(ch.statistics.subscriberCount);
 
@@ -383,11 +380,11 @@ async function clearCache(expiredOnly) {
     try {
       all = await chrome.storage.local.get(null);
     } catch (e) {
-      sgWarn('storage.local.get failed', e);
+      sgError('storage.local.get failed', e);
       break;
     }
     const settings = await getSettings();
-    const maxAge = Math.max(0, Number(settings.cacheDays) || 0) * 24 * 60 * 60 * 1000;
+    const maxAge = Math.max(0, Number(settings.cacheDays) || 0) * SG_DAY_MS;
     const now = Date.now();
     const doomed = Object.keys(all || {}).filter((k) => {
       if (!k.startsWith(SG_CACHE_PREFIX)) {
@@ -403,7 +400,7 @@ async function clearCache(expiredOnly) {
       try {
         await chrome.storage.local.remove(doomed);
       } catch (e) {
-        sgWarn('storage.local.remove failed', e);
+        sgError('storage.local.remove failed', e);
         break;
       }
     }
@@ -415,14 +412,14 @@ async function clearCache(expiredOnly) {
 }
 
 async function testKey() {
-  let retVal = { ok: false, error: 'unknown error' };
+  let retVal = { ok: false, error: SG_TXT_UNKNOWN_ERROR };
   sgEntry();
   do {
     const settings = await getSettings();
     quotaBlockedUntil = 0; // explicit user test: try regardless
-    const r = await apiGet('channels', { part: 'id', forHandle: '@YouTube' }, settings.apiKey);
+    const r = await apiGet('channels', { part: 'id', forHandle: SG_API_TEST_HANDLE }, settings.apiKey);
     if (!r.ok) {
-      retVal.error = r.error + ' (' + r.reason + ')';
+      retVal.error = sgFormat(SG_TXT_ERR_WITH_REASON, r.error, r.reason);
       break;
     }
     retVal = { ok: true, error: '' };
@@ -458,7 +455,7 @@ function onMessage(msg, sender, sendResponse) {
     }
 
     p.then(sendResponse).catch(function onMessageHandlerFailed(e) {
-      sgWarn('handler threw', e);
+      sgError('handler threw', e);
       sendResponse({ ok: false, error: String(e), reason: 'exception' });
     });
     retVal = true;

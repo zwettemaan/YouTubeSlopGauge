@@ -34,7 +34,7 @@ so they stay on this browser profile – use export/import to move them between 
    enable **YouTube Data API v3** → *Credentials → Create credentials → API key*.
    Restrict the key to "YouTube Data API v3" (API restrictions). It's free.
 2. **Load the extension** – unzip, open `chrome://extensions` (or `brave://extensions`), enable
-   *Developer mode*, *Load unpacked*, choose the `slop-gauge` folder.
+   *Developer mode*, *Load unpacked*, choose the `YouTubeSlopGauge` folder.
 3. The options page opens on install: paste the key, click **Test key**.
 4. Reload YouTube.
 
@@ -48,17 +48,22 @@ out, badges go grey and the extension pauses API calls for an hour.
 ## Notes / limitations
 
 - **The DOM selectors are the fragile part.** YouTube reshuffles its markup regularly. If badges stop
-  appearing, update `SG_ITEM_SELECTOR` / `SG_THUMB_SELECTOR` at the top of `content.js`.
+  appearing, update `SG_ITEM_SELECTOR` / `SG_THUMB_SELECTOR` in `common.js`.
 - Upload counts include Shorts and livestream VODs (that's what the uploads playlist contains) –
   which is usually what you want for slop detection, but a busy Shorts creator will score high.
 - These are heuristics, not proof: a new, prolific, small channel can be a legit human creator.
-- Turn on *Debug logging* in Options to see entry/exit traces in the DevTools console
+- Set *Console logging* in Options (Off / Errors / Warnings / Notes / Trace) to control what shows in the DevTools console; *Trace* adds entry/exit lines
   (page console for `content.js`; *Inspect service worker* on the extensions page for `background.js`).
 
 ## Files
 
 - `manifest.json` – MV3 manifest
-- `common.js` – defaults, logging, cache-key and trust/block list helpers (shared)
+- `common.js` – defaults, named constants and user-facing text, logging, cache-key and trust/block list helpers (shared)
 - `background.js` – API calls, caching, quota backoff (service worker; holds the key)
 - `content.js` / `content.css` – tile detection and badge rendering
 - `options.html` / `options.js` – settings page
+- `LICENSE` – MIT license
+
+## License
+
+MIT – see [LICENSE](LICENSE). Use at your own risk: no warranties, neither express nor implied.

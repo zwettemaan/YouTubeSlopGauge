@@ -44,7 +44,15 @@
       <option value="dim">Dim their videos</option>
     </select>
   </label>
-  <label>Debug logging <input id="debug" type="checkbox"></label>
+  <label>Console logging
+    <select id="logLevel">
+      <option value="off">Off</option>
+      <option value="error">Errors</option>
+      <option value="warn">Errors and warnings</option>
+      <option value="note">+ notes</option>
+      <option value="trace">+ function entry/exit trace</option>
+    </select>
+  </label>
 
   <p>
     <button id="save">Save</button>

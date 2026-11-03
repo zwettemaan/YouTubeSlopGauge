@@ -5,26 +5,6 @@
  */
 'use strict';
 
-// Video tiles across home, search, subscriptions, watch-page sidebar, channel pages.
-// YouTube changes its DOM often - this is the first place to look if badges stop appearing.
-const SG_ITEM_SELECTOR = [
-  'ytd-rich-item-renderer',
-  'ytd-video-renderer',
-  'ytd-compact-video-renderer',
-  'ytd-grid-video-renderer',
-  'yt-lockup-view-model'
-].join(',');
-
-const SG_THUMB_SELECTOR = [
-  'ytd-thumbnail',
-  'yt-thumbnail-view-model',
-  'a#thumbnail',
-  'a[class*="content-image"]'
-].join(',');
-
-const SG_SCAN_DEBOUNCE_MS = 300;
-const SG_BLOCK_CLASSES = ['sg-blocked-hide', 'sg-blocked-dim'];
-
 let sgSettings = { ...SG_DEFAULTS };
 let sgListIndex = new Map();      // cacheKey -> { list, id }
 let sgGen = 0;                    // bumps when settings/lists change => forces re-render
@@ -94,7 +74,7 @@ function sgFindChannelKey(item) {
     retVal = sgParseChannelPath(location.pathname);
   }
   while (CONDITION_LADDER_END);
-  sgLog(retVal);
+  sgNote(retVal);
   return retVal;
 }
 
@@ -108,10 +88,10 @@ function sgGetStats(key, ck) {
       break;
     }
     const p = (async () => {
-      let res = { ok: false, error: 'unknown error', reason: 'unknown' };
+      let res = { ok: false, error: SG_TXT_UNKNOWN_ERROR, reason: 'unknown' };
       do {
         if (!chrome.runtime || !chrome.runtime.id) {
-          res.error = 'Extension was reloaded - refresh this page';
+          res.error = SG_TXT_ERR_EXTENSION_RELOADED;
           res.reason = 'contextInvalidated';
           break;
         }
@@ -119,7 +99,7 @@ function sgGetStats(key, ck) {
         try {
           resp = await chrome.runtime.sendMessage({ type: 'getChannelStats', key: key });
         } catch (e) {
-          res.error = 'Messaging failed: ' + (e && e.message ? e.message : String(e));
+          res.error = sgFormat(SG_TXT_ERR_MESSAGING, e && e.message ? e.message : String(e));
           res.reason = 'messaging';
           break;
         }
@@ -146,17 +126,19 @@ function sgGetStats(key, ck) {
 
 /* ------------------------------------------------------------------------- */
 function sgFormatCount(n) {
-  let retVal = '?';
+  let retVal = SG_TXT_UNKNOWN_VALUE;
   do {
     if (!Number.isFinite(n)) {
       break;
     }
-    if (n >= 1e6) {
-      retVal = (n / 1e6).toFixed(n >= 1e7 ? 0 : 1) + 'M';
+    if (n >= SG_COUNT_MILLION) {
+      const decimals = n >= SG_COUNT_MILLION * SG_COUNT_NO_DECIMALS_FACTOR ? 0 : SG_COUNT_DECIMALS;
+      retVal = (n / SG_COUNT_MILLION).toFixed(decimals) + SG_TXT_MILLION_SUFFIX;
       break;
     }
-    if (n >= 1e3) {
-      retVal = (n / 1e3).toFixed(n >= 1e4 ? 0 : 1) + 'K';
+    if (n >= SG_COUNT_THOUSAND) {
+      const decimals = n >= SG_COUNT_THOUSAND * SG_COUNT_NO_DECIMALS_FACTOR ? 0 : SG_COUNT_DECIMALS;
+      retVal = (n / SG_COUNT_THOUSAND).toFixed(decimals) + SG_TXT_THOUSAND_SUFFIX;
       break;
     }
     retVal = String(n);
@@ -174,12 +156,12 @@ function sgEvaluate(stats, s) {
   sgEntry();
   do {
     if (!stats || !stats.ok) {
-      retVal.parts.push({ text: '?', flag: false });
-      retVal.tip.push('Slop Gauge: ' + ((stats && stats.error) || 'no data'));
+      retVal.parts.push({ text: SG_TXT_UNKNOWN_VALUE, flag: false });
+      retVal.tip.push(sgFormat(SG_TXT_TIP_ERROR, (stats && stats.error) || SG_TXT_TIP_NO_DATA));
       break;
     }
     let flags = 0;
-    retVal.tip.push(stats.title + (stats.handle ? '  (' + stats.handle + ')' : ''));
+    retVal.tip.push(stats.handle ? sgFormat(SG_TXT_TIP_TITLE_HANDLE, stats.title, stats.handle) : stats.title);
 
     // 1. Channel age
     const created = Date.parse(stats.publishedAt);
@@ -188,36 +170,39 @@ function sgEvaluate(stats, s) {
       const isNew = Number.isFinite(cutoff) && created >= cutoff;
       flags += isNew ? 1 : 0;
       retVal.parts.push({ text: String(new Date(created).getFullYear()), flag: isNew });
-      retVal.tip.push('Created ' + stats.publishedAt.slice(0, 10)
-        + (isNew ? '   ⚠ on/after ' + s.newChannelCutoff : ''));
+      retVal.tip.push(sgFormat(SG_TXT_TIP_CREATED, stats.publishedAt.slice(0, SG_ISO_DATE_LENGTH))
+        + (isNew ? sgFormat(SG_TXT_TIP_CREATED_FLAG, s.newChannelCutoff) : ''));
     }
 
     // 2. Upload rate
     if (Number.isFinite(stats.perWeek)) {
       const high = stats.perWeek > Number(s.maxPerWeek);
       flags += high ? 1 : 0;
-      const ge = stats.uploadsTruncated ? '≥' : '';
-      retVal.parts.push({ text: ge + stats.perWeek.toFixed(1) + '/wk', flag: high });
-      retVal.tip.push(`Uploads since ${stats.rateSince}: ${ge}${stats.uploadsSince} in `
-        + `${stats.weeks.toFixed(1)} wk = ${ge}${stats.perWeek.toFixed(2)}/wk`
-        + (high ? `   ⚠ > ${s.maxPerWeek}/wk` : ''));
+      const ge = stats.uploadsTruncated ? SG_TXT_AT_LEAST : '';
+      retVal.parts.push({
+        text: sgFormat(SG_TXT_BADGE_RATE, ge, stats.perWeek.toFixed(SG_RATE_BADGE_DECIMALS)),
+        flag: high
+      });
+      retVal.tip.push(sgFormat(SG_TXT_TIP_UPLOADS, stats.rateSince, ge, stats.uploadsSince,
+        stats.weeks.toFixed(SG_WEEKS_TIP_DECIMALS), stats.perWeek.toFixed(SG_RATE_TIP_DECIMALS))
+        + (high ? sgFormat(SG_TXT_TIP_UPLOADS_FLAG, s.maxPerWeek) : ''));
     }
 
     // 3. Subscribers
     if (stats.hiddenSubs) {
-      retVal.parts.push({ text: 'subs hidden', flag: false });
-      retVal.tip.push('Subscriber count hidden');
+      retVal.parts.push({ text: SG_TXT_BADGE_SUBS_HIDDEN, flag: false });
+      retVal.tip.push(SG_TXT_TIP_SUBS_HIDDEN);
     } else if (Number.isFinite(stats.subscribers)) {
       const low = stats.subscribers < Number(s.minSubscribers);
       flags += low ? 1 : 0;
       retVal.parts.push({ text: sgFormatCount(stats.subscribers), flag: low });
-      retVal.tip.push('Subscribers: ' + stats.subscribers.toLocaleString()
-        + (low ? `   ⚠ < ${Number(s.minSubscribers).toLocaleString()}` : ''));
+      retVal.tip.push(sgFormat(SG_TXT_TIP_SUBS, stats.subscribers.toLocaleString())
+        + (low ? sgFormat(SG_TXT_TIP_SUBS_FLAG, Number(s.minSubscribers).toLocaleString()) : ''));
     }
 
-    retVal.tip.push('Total videos: ' + stats.videoCount.toLocaleString());
-    retVal.tip.push('Fetched ' + new Date(stats.fetchedAt).toLocaleString());
-    retVal.tip.push('Click badge to trust / block');
+    retVal.tip.push(sgFormat(SG_TXT_TIP_VIDEOS, stats.videoCount.toLocaleString()));
+    retVal.tip.push(sgFormat(SG_TXT_TIP_FETCHED, new Date(stats.fetchedAt).toLocaleString()));
+    retVal.tip.push(SG_TXT_TIP_CLICK_TO_LIST);
 
     retVal.level = (flags === 0) ? 'ok' : (flags === 1) ? 'warn' : 'bad';
   }
@@ -234,14 +219,14 @@ function sgEvaluateListed(hit, ctx) {
     const name = entry ? (entry.title || entry.handle || hit.id) : hit.id;
     if (hit.list === 'trusted') {
       retVal.level = 'trusted';
-      retVal.parts.push({ text: '✓ trusted', flag: false });
-      retVal.tip.push(name + ' - on your trusted list');
+      retVal.parts.push({ text: SG_TXT_BADGE_TRUSTED, flag: false });
+      retVal.tip.push(sgFormat(SG_TXT_TIP_ON_TRUSTED, name));
     } else {
       retVal.level = 'blocked';
-      retVal.parts.push({ text: '⛔ blocked', flag: false });
-      retVal.tip.push(name + ' - on your blocked list');
+      retVal.parts.push({ text: SG_TXT_BADGE_BLOCKED, flag: false });
+      retVal.tip.push(sgFormat(SG_TXT_TIP_ON_BLOCKED, name));
     }
-    retVal.tip.push('Click badge to change');
+    retVal.tip.push(SG_TXT_TIP_CLICK_TO_CHANGE);
   }
   while (CONDITION_LADDER_END);
   return retVal;
@@ -338,7 +323,7 @@ function sgOpenMenu(badge, ctx) {
     head.className = 'sg-menu-head';
     const st = ctx.stats;
     head.textContent = (st && st.ok && st.title) ? st.title
-      : (ctx.key ? ctx.key.value : 'Channel');
+      : (ctx.key ? ctx.key.value : SG_TXT_MENU_CHANNEL);
     menu.appendChild(head);
 
     const addItem = (label, action) => {
@@ -356,13 +341,13 @@ function sgOpenMenu(badge, ctx) {
 
     const listed = ctx.hit ? ctx.hit.list : '';
     if (listed !== 'trusted') {
-      addItem('✓ Trust this channel', 'trusted');
+      addItem(SG_TXT_MENU_TRUST, 'trusted');
     }
     if (listed !== 'blocked') {
-      addItem('⛔ Block this channel', 'blocked');
+      addItem(SG_TXT_MENU_BLOCK, 'blocked');
     }
     if (listed) {
-      addItem('Remove from ' + listed + ' list', 'remove');
+      addItem(sgFormat(SG_TXT_MENU_REMOVE, listed), 'remove');
     }
 
     // Swallow clicks inside the menu so YouTube never sees them
@@ -372,12 +357,12 @@ function sgOpenMenu(badge, ctx) {
     const r = badge.getBoundingClientRect();
     const mw = menu.offsetWidth;
     const mh = menu.offsetHeight;
-    let left = Math.min(r.left, window.innerWidth - mw - 8);
-    let top = r.bottom + 4;
-    if (top + mh > window.innerHeight - 8) {
-      top = Math.max(8, r.top - mh - 4);
+    const left = Math.min(r.left, window.innerWidth - mw - SG_MENU_VIEWPORT_MARGIN_PX);
+    let top = r.bottom + SG_MENU_BADGE_GAP_PX;
+    if (top + mh > window.innerHeight - SG_MENU_VIEWPORT_MARGIN_PX) {
+      top = Math.max(SG_MENU_VIEWPORT_MARGIN_PX, r.top - mh - SG_MENU_BADGE_GAP_PX);
     }
-    menu.style.left = Math.max(8, left) + 'px';
+    menu.style.left = Math.max(SG_MENU_VIEWPORT_MARGIN_PX, left) + 'px';
     menu.style.top = top + 'px';
     sgMenu = menu;
   }
@@ -401,7 +386,7 @@ function sgRenderBadge(thumb, ev, ctx) {
     badge.dataset.sgGen = String(sgGen);
     ev.parts.forEach((p, i) => {
       if (i > 0) {
-        badge.appendChild(document.createTextNode(' · '));
+        badge.appendChild(document.createTextNode(SG_TXT_BADGE_SEPARATOR));
       }
       const span = document.createElement('span');
       span.textContent = p.text; // textContent only - never innerHTML with API data
@@ -428,7 +413,7 @@ function sgRenderBadge(thumb, ev, ctx) {
 }
 
 function sgRenderPending(thumb) {
-  sgRenderBadge(thumb, { level: 'pending', parts: [{ text: '…', flag: false }], tip: ['Slop Gauge: loading'] }, null);
+  sgRenderBadge(thumb, { level: 'pending', parts: [{ text: SG_TXT_BADGE_PENDING, flag: false }], tip: [SG_TXT_TIP_LOADING] }, null);
 }
 
 function sgClearBlockState(item) {
@@ -527,7 +512,7 @@ function sgScan() {
       try {
         sgProcessItem(item);
       } catch (e) {
-        sgWarn('processItem threw', e);
+        sgError('processItem threw', e);
       }
     }
   }
@@ -551,14 +536,14 @@ async function sgLoadSettings() {
     try {
       s = await chrome.storage.sync.get(SG_DEFAULTS);
     } catch (e) {
-      sgWarn('storage.sync.get failed', e);
+      sgError('storage.sync.get failed', e);
       break;
     }
     if (!s || typeof s !== 'object') {
       break;
     }
     sgSettings = s;
-    sgSetDebug(s.debug);
+    sgSetLogLevel(s.logLevel);
   }
   while (CONDITION_LADDER_END);
   sgExit();
