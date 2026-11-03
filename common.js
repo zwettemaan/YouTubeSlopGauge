@@ -20,6 +20,7 @@ const SG_CACHE_PREFIX = 'ch:';
 const SG_LISTS_KEY = 'sgLists';   // chrome.storage.local - no 8KB/item limit like sync
 const SG_LIST_NAMES = Object.freeze(['trusted', 'blocked']);
 const SG_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+const CONDITION_LADDER_END = false;
 
 let SG_debug = false;
 
@@ -27,22 +28,57 @@ function sgSetDebug(on) {
   SG_debug = !!on;
 }
 
-function sgLog(fn, ...args) {
+const SG_LOG_PREFIX = '[SlopGauge]';
+
+/*
+ * Name of the function that called the public logger `loggerFn`, read from a
+ * V8 structured stack (Chrome only). Built-in frames (forEach, ...) and
+ * anonymous arrows are skipped so a callback logs under its enclosing function,
+ * as long as that function is still on the stack - not true for callbacks run
+ * later from .then / setTimeout / event listeners.
+ */
+function sgCallerName(loggerFn) {
+  let retVal = '(unknown)';
+  const savedPrepare = Error.prepareStackTrace;
+  try {
+    Error.prepareStackTrace = (_, frames) => frames;
+    const holder = {};
+    Error.captureStackTrace(holder, loggerFn);
+    for (const frame of holder.stack) {
+      const name = frame.getFileName() && frame.getFunctionName();
+      if (name) {
+        retVal = name;
+        break;
+      }
+    }
+  } catch (e) {
+    // never let logging break the caller
+  } finally {
+    Error.prepareStackTrace = savedPrepare;
+  }
+  return retVal;
+}
+
+function sgLog(...args) {
   if (SG_debug) {
-    console.debug('[SlopGauge]', fn, ...args);
+    console.debug(SG_LOG_PREFIX, sgCallerName(sgLog), ...args);
   }
 }
 
-function sgEntry(fn, ...args) {
-  sgLog(fn, '> entry', ...args);
+function sgEntry(...args) {
+  if (SG_debug) {
+    console.debug(SG_LOG_PREFIX, sgCallerName(sgEntry), '> entry', ...args);
+  }
 }
 
-function sgExit(fn, ...args) {
-  sgLog(fn, '< exit', ...args);
+function sgExit(...args) {
+  if (SG_debug) {
+    console.debug(SG_LOG_PREFIX, sgCallerName(sgExit), '< exit', ...args);
+  }
 }
 
-function sgWarn(fn, ...args) {
-  console.warn('[SlopGauge]', fn, ...args);
+function sgWarn(...args) {
+  console.warn(SG_LOG_PREFIX, sgCallerName(sgWarn), ...args);
 }
 
 /*
@@ -50,15 +86,14 @@ function sgWarn(fn, ...args) {
  * Returns '' on invalid input.
  */
 function sgCacheKey(key) {
-  const fn = 'sgCacheKey';
   let retVal = '';
   do {
     if (!key || typeof key !== 'object') {
-      sgWarn(fn, 'key is not an object', key);
+      sgWarn('key is not an object', key);
       break;
     }
     if (typeof key.value !== 'string' || key.value.length === 0 || key.value.length > 200) {
-      sgWarn(fn, 'bad key value', key);
+      sgWarn('bad key value', key);
       break;
     }
     if (key.kind === 'handle') {
@@ -70,8 +105,9 @@ function sgCacheKey(key) {
       retVal = SG_CACHE_PREFIX + 'i:' + key.value;
       break;
     }
-    sgWarn(fn, 'unknown key kind', key.kind);
-  } while (false);
+    sgWarn('unknown key kind', key.kind);
+  }
+  while (CONDITION_LADDER_END);
   return retVal;
 }
 
@@ -89,9 +125,8 @@ function sgEmptyLists() {
 }
 
 function sgValidateLists(raw) {
-  const fn = 'sgValidateLists';
   const retVal = sgEmptyLists();
-  sgEntry(fn);
+  sgEntry();
   do {
     if (!raw || typeof raw !== 'object') {
       break;
@@ -126,44 +161,45 @@ function sgValidateLists(raw) {
         };
       }
     }
-  } while (false);
-  sgExit(fn);
+  }
+  while (CONDITION_LADDER_END);
+  sgExit();
   return retVal;
 }
 
 async function sgLoadLists() {
-  const fn = 'sgLoadLists';
   let retVal = sgEmptyLists();
-  sgEntry(fn);
+  sgEntry();
   do {
     let got;
     try {
       got = await chrome.storage.local.get(SG_LISTS_KEY);
     } catch (e) {
-      sgWarn(fn, 'storage.local.get failed', e);
+      sgWarn('storage.local.get failed', e);
       break;
     }
     retVal = sgValidateLists(got ? got[SG_LISTS_KEY] : null);
-  } while (false);
-  sgExit(fn, Object.keys(retVal.trusted).length, Object.keys(retVal.blocked).length);
+  }
+  while (CONDITION_LADDER_END);
+  sgExit(Object.keys(retVal.trusted).length, Object.keys(retVal.blocked).length);
   return retVal;
 }
 
 async function sgSaveLists(lists) {
-  const fn = 'sgSaveLists';
   let retVal = false;
-  sgEntry(fn);
+  sgEntry();
   do {
     const clean = sgValidateLists(lists);
     try {
       await chrome.storage.local.set({ [SG_LISTS_KEY]: clean });
     } catch (e) {
-      sgWarn(fn, 'storage.local.set failed', e);
+      sgWarn('storage.local.set failed', e);
       break;
     }
     retVal = true;
-  } while (false);
-  sgExit(fn, retVal);
+  }
+  while (CONDITION_LADDER_END);
+  sgExit(retVal);
   return retVal;
 }
 
@@ -181,7 +217,8 @@ function sgIndexLists(lists) {
         }
       }
     }
-  } while (false);
+  }
+  while (CONDITION_LADDER_END);
   return retVal;
 }
 
@@ -190,20 +227,19 @@ function sgIndexLists(lists) {
  * entry is required when adding: { title, handle, keys }.
  */
 async function sgSetListMembership(entryId, entry, listName) {
-  const fn = 'sgSetListMembership';
   let retVal = false;
-  sgEntry(fn, entryId, listName);
+  sgEntry(entryId, listName);
   do {
     if (typeof entryId !== 'string' || entryId === '') {
-      sgWarn(fn, 'bad entryId');
+      sgWarn('bad entryId');
       break;
     }
     if (listName !== null && !SG_LIST_NAMES.includes(listName)) {
-      sgWarn(fn, 'bad list name', listName);
+      sgWarn('bad list name', listName);
       break;
     }
     if (listName !== null && (!entry || !Array.isArray(entry.keys) || entry.keys.length === 0)) {
-      sgWarn(fn, 'entry without keys');
+      sgWarn('entry without keys');
       break;
     }
     const lists = await sgLoadLists();
@@ -219,7 +255,8 @@ async function sgSetListMembership(entryId, entry, listName) {
       };
     }
     retVal = await sgSaveLists(lists);
-  } while (false);
-  sgExit(fn, retVal);
+  }
+  while (CONDITION_LADDER_END);
+  sgExit(retVal);
   return retVal;
 }

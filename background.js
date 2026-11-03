@@ -14,33 +14,32 @@ let quotaBlockedUntil = 0;
 
 /* ------------------------------------------------------------------------- */
 async function getSettings() {
-  const fn = 'getSettings';
   let retVal = { ...SG_DEFAULTS };
-  sgEntry(fn);
+  sgEntry();
   do {
     let s = null;
     try {
       s = await chrome.storage.sync.get(SG_DEFAULTS);
     } catch (e) {
-      sgWarn(fn, 'storage.sync.get failed', e);
+      sgWarn('storage.sync.get failed', e);
       break;
     }
     if (!s || typeof s !== 'object') {
-      sgWarn(fn, 'settings object missing');
+      sgWarn('settings object missing');
       break;
     }
     retVal = s;
     sgSetDebug(retVal.debug);
-  } while (false);
-  sgExit(fn, '(settings loaded)'); // never log the API key
+  }
+  while (CONDITION_LADDER_END);
+  sgExit('(settings loaded)'); // never log the API key
   return retVal;
 }
 
 /* ------------------------------------------------------------------------- */
 async function apiGet(endpoint, params, apiKey) {
-  const fn = 'apiGet';
   let retVal = { ok: false, data: null, error: 'unknown error', reason: 'unknown' };
-  sgEntry(fn, endpoint);
+  sgEntry(endpoint);
   do {
     if (typeof apiKey !== 'string' || apiKey.trim() === '') {
       retVal.error = 'No API key set - open the extension options';
@@ -95,7 +94,7 @@ async function apiGet(endpoint, params, apiKey) {
       if (reason === 'quotaExceeded' || reason === 'dailyLimitExceeded' || reason === 'rateLimitExceeded') {
         quotaBlockedUntil = Date.now() + QUOTA_BACKOFF_MS;
       }
-      sgWarn(fn, endpoint, resp.status, reason);
+      sgWarn(endpoint, resp.status, reason);
       break;
     }
     if (!json || typeof json !== 'object') {
@@ -106,16 +105,16 @@ async function apiGet(endpoint, params, apiKey) {
 
     // all is well
     retVal = { ok: true, data: json, error: '', reason: '' };
-  } while (false);
-  sgExit(fn, endpoint, retVal.ok ? 'ok' : retVal.reason);
+  }
+  while (CONDITION_LADDER_END);
+  sgExit(endpoint, retVal.ok ? 'ok' : retVal.reason);
   return retVal;
 }
 
 /* ------------------------------------------------------------------------- */
 async function fetchChannel(key, apiKey) {
-  const fn = 'fetchChannel';
   let retVal = { ok: false, channel: null, error: 'unknown error', reason: 'unknown' };
-  sgEntry(fn, key);
+  sgEntry(key);
   do {
     const params = { part: 'snippet,statistics,contentDetails' };
     if (key.kind === 'handle') {
@@ -149,8 +148,9 @@ async function fetchChannel(key, apiKey) {
 
     // all is well
     retVal = { ok: true, channel: ch, error: '', reason: '' };
-  } while (false);
-  sgExit(fn, retVal.ok ? 'ok' : retVal.reason);
+  }
+  while (CONDITION_LADDER_END);
+  sgExit(retVal.ok ? 'ok' : retVal.reason);
   return retVal;
 }
 
@@ -159,9 +159,8 @@ async function fetchChannel(key, apiKey) {
  * (newest first). Stops at the first page containing an older video, or at maxPages.
  */
 async function countUploadsSince(playlistId, sinceMs, apiKey, maxPages) {
-  const fn = 'countUploadsSince';
   let retVal = { ok: false, count: 0, truncated: false, error: 'unknown error', reason: 'unknown' };
-  sgEntry(fn, playlistId, maxPages);
+  sgEntry(playlistId, maxPages);
   do {
     if (typeof playlistId !== 'string' || playlistId === '') {
       // No uploads playlist => no uploads
@@ -230,22 +229,22 @@ async function countUploadsSince(playlistId, sinceMs, apiKey, maxPages) {
 
     // all is well
     retVal = { ok: true, count: count, truncated: truncated, error: '', reason: '' };
-  } while (false);
-  sgExit(fn, retVal.ok ? `${retVal.count}${retVal.truncated ? '+' : ''}` : retVal.reason);
+  }
+  while (CONDITION_LADDER_END);
+  sgExit(retVal.ok ? `${retVal.count}${retVal.truncated ? '+' : ''}` : retVal.reason);
   return retVal;
 }
 
 /* ------------------------------------------------------------------------- */
 async function readCache(ck, settings) {
-  const fn = 'readCache';
   let retVal = null;
-  sgEntry(fn, ck);
+  sgEntry(ck);
   do {
     let got;
     try {
       got = await chrome.storage.local.get(ck);
     } catch (e) {
-      sgWarn(fn, 'storage.local.get failed', e);
+      sgWarn('storage.local.get failed', e);
       break;
     }
     const entry = got ? got[ck] : null;
@@ -260,14 +259,14 @@ async function readCache(ck, settings) {
       break; // computed against a different window
     }
     retVal = entry;
-  } while (false);
-  sgExit(fn, retVal ? 'hit' : 'miss');
+  }
+  while (CONDITION_LADDER_END);
+  sgExit(retVal ? 'hit' : 'miss');
   return retVal;
 }
 
 async function writeCache(keys, entry) {
-  const fn = 'writeCache';
-  sgEntry(fn, keys);
+  sgEntry(keys);
   do {
     const obj = {};
     for (const k of keys) {
@@ -281,17 +280,17 @@ async function writeCache(keys, entry) {
     try {
       await chrome.storage.local.set(obj);
     } catch (e) {
-      sgWarn(fn, 'storage.local.set failed', e);
+      sgWarn('storage.local.set failed', e);
     }
-  } while (false);
-  sgExit(fn);
+  }
+  while (CONDITION_LADDER_END);
+  sgExit();
 }
 
 /* ------------------------------------------------------------------------- */
 async function buildChannelStats(key, ck) {
-  const fn = 'buildChannelStats';
   let retVal = { ok: false, error: 'unknown error', reason: 'unknown' };
-  sgEntry(fn, ck);
+  sgEntry(ck);
   do {
     const settings = await getSettings();
 
@@ -347,15 +346,15 @@ async function buildChannelStats(key, ck) {
     };
     // Store under both the requested key and the canonical channel-id key
     await writeCache([ck, sgCacheKey({ kind: 'id', value: ch.id })], retVal);
-  } while (false);
-  sgExit(fn, retVal.ok ? 'ok' : retVal.reason);
+  }
+  while (CONDITION_LADDER_END);
+  sgExit(retVal.ok ? 'ok' : retVal.reason);
   return retVal;
 }
 
 function getChannelStats(key) {
-  const fn = 'getChannelStats';
   let retVal = null;
-  sgEntry(fn, key);
+  sgEntry(key);
   do {
     const ck = sgCacheKey(key);
     if (!ck) {
@@ -369,22 +368,22 @@ function getChannelStats(key) {
     const p = buildChannelStats(key, ck).finally(() => inflight.delete(ck));
     inflight.set(ck, p);
     retVal = p;
-  } while (false);
-  sgExit(fn);
+  }
+  while (CONDITION_LADDER_END);
+  sgExit();
   return retVal;
 }
 
 /* ------------------------------------------------------------------------- */
 async function clearCache(expiredOnly) {
-  const fn = 'clearCache';
   let retVal = { ok: false, removed: 0 };
-  sgEntry(fn, expiredOnly);
+  sgEntry(expiredOnly);
   do {
     let all;
     try {
       all = await chrome.storage.local.get(null);
     } catch (e) {
-      sgWarn(fn, 'storage.local.get failed', e);
+      sgWarn('storage.local.get failed', e);
       break;
     }
     const settings = await getSettings();
@@ -404,20 +403,20 @@ async function clearCache(expiredOnly) {
       try {
         await chrome.storage.local.remove(doomed);
       } catch (e) {
-        sgWarn(fn, 'storage.local.remove failed', e);
+        sgWarn('storage.local.remove failed', e);
         break;
       }
     }
     retVal = { ok: true, removed: doomed.length };
-  } while (false);
-  sgExit(fn, retVal);
+  }
+  while (CONDITION_LADDER_END);
+  sgExit(retVal);
   return retVal;
 }
 
 async function testKey() {
-  const fn = 'testKey';
   let retVal = { ok: false, error: 'unknown error' };
-  sgEntry(fn);
+  sgEntry();
   do {
     const settings = await getSettings();
     quotaBlockedUntil = 0; // explicit user test: try regardless
@@ -427,22 +426,22 @@ async function testKey() {
       break;
     }
     retVal = { ok: true, error: '' };
-  } while (false);
-  sgExit(fn, retVal);
+  }
+  while (CONDITION_LADDER_END);
+  sgExit(retVal);
   return retVal;
 }
 
 /* ------------------------------------------------------------------------- */
-chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  const fn = 'onMessage';
+function onMessage(msg, sender, sendResponse) {
   let retVal = false; // true => we will respond asynchronously
   do {
     if (!sender || sender.id !== chrome.runtime.id) {
-      sgWarn(fn, 'message from foreign sender ignored');
+      sgWarn('message from foreign sender ignored');
       break;
     }
     if (!msg || typeof msg.type !== 'string') {
-      sgWarn(fn, 'malformed message');
+      sgWarn('malformed message');
       break;
     }
 
@@ -454,19 +453,21 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     } else if (msg.type === 'testKey') {
       p = testKey();
     } else {
-      sgWarn(fn, 'unknown message type', msg.type);
+      sgWarn('unknown message type', msg.type);
       break;
     }
 
-    p.then(sendResponse).catch((e) => {
-      sgWarn(fn, 'handler threw', e);
+    p.then(sendResponse).catch(function onMessageHandlerFailed(e) {
+      sgWarn('handler threw', e);
       sendResponse({ ok: false, error: String(e), reason: 'exception' });
     });
     retVal = true;
-  } while (false);
+  }
+  while (CONDITION_LADDER_END);
   return retVal;
-});
+}
 
+chrome.runtime.onMessage.addListener(onMessage);
 chrome.runtime.onStartup.addListener(() => { clearCache(true); });
 chrome.runtime.onInstalled.addListener((details) => {
   clearCache(true);

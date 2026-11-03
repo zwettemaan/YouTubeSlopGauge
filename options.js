@@ -19,8 +19,7 @@ function optStatus(msg, cls) {
 
 /* ------------------------------------------------------------------------- */
 async function optLoad() {
-  const fn = 'optLoad';
-  sgEntry(fn);
+  sgEntry();
   do {
     let s;
     try {
@@ -33,14 +32,14 @@ async function optLoad() {
     OPT_TEXT.forEach((k) => { document.getElementById(k).value = String(s[k] ?? ''); });
     Object.keys(OPT_ENUM).forEach((k) => { document.getElementById(k).value = String(s[k]); });
     Object.keys(OPT_NUM).forEach((k) => { document.getElementById(k).value = String(s[k]); });
-  } while (false);
-  sgExit(fn);
+  }
+  while (CONDITION_LADDER_END);
+  sgExit();
 }
 
 async function optSave() {
-  const fn = 'optSave';
   let retVal = false;
-  sgEntry(fn);
+  sgEntry();
   do {
     const out = {};
     OPT_BOOL.forEach((k) => { out[k] = document.getElementById(k).checked; });
@@ -90,14 +89,14 @@ async function optSave() {
     }
     optStatus('Saved. Open YouTube tabs update automatically.', 'ok');
     retVal = true;
-  } while (false);
-  sgExit(fn, retVal);
+  }
+  while (CONDITION_LADDER_END);
+  sgExit(retVal);
   return retVal;
 }
 
 async function optSend(type, okMsg) {
-  const fn = 'optSend';
-  sgEntry(fn, type);
+  sgEntry(type);
   do {
     let r;
     try {
@@ -111,8 +110,9 @@ async function optSend(type, okMsg) {
       break;
     }
     optStatus(okMsg(r), 'ok');
-  } while (false);
-  sgExit(fn);
+  }
+  while (CONDITION_LADDER_END);
+  sgExit();
 }
 
 /* ------------------------------------------------------------------------- */
@@ -129,13 +129,13 @@ function optChannelUrl(id, entry) {
       retVal = 'https://www.youtube.com/' + encodeURIComponent(entry.handle).replace('%40', '@');
       break;
     }
-  } while (false);
+  }
+  while (CONDITION_LADDER_END);
   return retVal;
 }
 
 function optRenderTable(tableId, countId, listName, list) {
-  const fn = 'optRenderTable';
-  sgEntry(fn, listName);
+  sgEntry(listName);
   do {
     const table = document.getElementById(tableId);
     const count = document.getElementById(countId);
@@ -190,8 +190,9 @@ function optRenderTable(tableId, countId, listName, list) {
       });
       tdAct.appendChild(btn);
     }
-  } while (false);
-  sgExit(fn);
+  }
+  while (CONDITION_LADDER_END);
+  sgExit();
 }
 
 async function optRenderLists() {
@@ -201,8 +202,7 @@ async function optRenderLists() {
 }
 
 async function optExport() {
-  const fn = 'optExport';
-  sgEntry(fn);
+  sgEntry();
   do {
     const lists = await sgLoadLists();
     const payload = { format: 'slop-gauge-lists', version: 1, exportedAt: new Date().toISOString(), lists: lists };
@@ -216,13 +216,13 @@ async function optExport() {
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 5000);
     optStatus('Exported.', 'ok');
-  } while (false);
-  sgExit(fn);
+  }
+  while (CONDITION_LADDER_END);
+  sgExit();
 }
 
 async function optImport(file) {
-  const fn = 'optImport';
-  sgEntry(fn);
+  sgEntry();
   do {
     if (!file) {
       break;
@@ -264,8 +264,9 @@ async function optImport(file) {
     }
     const ok = await sgSaveLists(current);
     optStatus(ok ? `Imported ${added} channel(s).` : 'Import failed while saving.', ok ? 'ok' : 'err');
-  } while (false);
-  sgExit(fn);
+  }
+  while (CONDITION_LADDER_END);
+  sgExit();
 }
 
 /* ------------------------------------------------------------------------- */

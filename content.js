@@ -34,7 +34,6 @@ const sgStatsMemo = new Map();    // cacheKey -> Promise<stats>
 
 /* ------------------------------------------------------------------------- */
 function sgParseChannelPath(pathname) {
-  const fn = 'sgParseChannelPath';
   let retVal = null;
   do {
     if (typeof pathname !== 'string' || pathname.length < 2) {
@@ -46,7 +45,7 @@ function sgParseChannelPath(pathname) {
       try {
         handle = decodeURIComponent(m[1]);
       } catch (e) {
-        sgWarn(fn, 'bad handle encoding', m[1]);
+        sgWarn('bad handle encoding', m[1]);
         break;
       }
       retVal = { kind: 'handle', value: handle };
@@ -57,12 +56,12 @@ function sgParseChannelPath(pathname) {
       retVal = { kind: 'id', value: m[1] };
       break;
     }
-  } while (false);
+  }
+  while (CONDITION_LADDER_END);
   return retVal;
 }
 
 function sgFindChannelKey(item) {
-  const fn = 'sgFindChannelKey';
   let retVal = null;
   do {
     if (!item || typeof item.querySelectorAll !== 'function') {
@@ -93,16 +92,16 @@ function sgFindChannelKey(item) {
     }
     // On a channel's own page the tiles carry no channel link - use the page's channel.
     retVal = sgParseChannelPath(location.pathname);
-  } while (false);
-  sgLog(fn, retVal);
+  }
+  while (CONDITION_LADDER_END);
+  sgLog(retVal);
   return retVal;
 }
 
 /* ------------------------------------------------------------------------- */
 function sgGetStats(key, ck) {
-  const fn = 'sgGetStats';
   let retVal = null;
-  sgEntry(fn, ck);
+  sgEntry(ck);
   do {
     if (sgStatsMemo.has(ck)) {
       retVal = sgStatsMemo.get(ck);
@@ -130,7 +129,8 @@ function sgGetStats(key, ck) {
           break;
         }
         res = resp;
-      } while (false);
+      }
+      while (CONDITION_LADDER_END);
       if (!res.ok && (res.reason === 'network' || res.reason === 'messaging')) {
         sgStatsMemo.delete(ck); // transient - allow a retry on a later scan
       }
@@ -138,8 +138,9 @@ function sgGetStats(key, ck) {
     })();
     sgStatsMemo.set(ck, p);
     retVal = p;
-  } while (false);
-  sgExit(fn);
+  }
+  while (CONDITION_LADDER_END);
+  sgExit();
   return retVal;
 }
 
@@ -159,7 +160,8 @@ function sgFormatCount(n) {
       break;
     }
     retVal = String(n);
-  } while (false);
+  }
+  while (CONDITION_LADDER_END);
   return retVal;
 }
 
@@ -168,9 +170,8 @@ function sgFormatCount(n) {
  * level: ok (0 flags) | warn (1 flag) | bad (2+ flags) | err
  */
 function sgEvaluate(stats, s) {
-  const fn = 'sgEvaluate';
   const retVal = { level: 'err', parts: [], tip: [] };
-  sgEntry(fn);
+  sgEntry();
   do {
     if (!stats || !stats.ok) {
       retVal.parts.push({ text: '?', flag: false });
@@ -219,8 +220,9 @@ function sgEvaluate(stats, s) {
     retVal.tip.push('Click badge to trust / block');
 
     retVal.level = (flags === 0) ? 'ok' : (flags === 1) ? 'warn' : 'bad';
-  } while (false);
-  sgExit(fn, retVal.level);
+  }
+  while (CONDITION_LADDER_END);
+  sgExit(retVal.level);
   return retVal;
 }
 
@@ -240,7 +242,8 @@ function sgEvaluateListed(hit, ctx) {
       retVal.tip.push(name + ' - on your blocked list');
     }
     retVal.tip.push('Click badge to change');
-  } while (false);
+  }
+  while (CONDITION_LADDER_END);
   return retVal;
 }
 
@@ -259,9 +262,8 @@ function sgCloseMenu() {
  * Returns { id, entry } or null.
  */
 function sgEntryFromCtx(ctx) {
-  const fn = 'sgEntryFromCtx';
   let retVal = null;
-  sgEntry(fn);
+  sgEntry();
   do {
     if (!ctx || !ctx.ck) {
       break;
@@ -281,18 +283,18 @@ function sgEntryFromCtx(ctx) {
       }
     }
     retVal = { id: id, entry: { title: title, handle: handle, keys: keys.filter(Boolean) } };
-  } while (false);
-  sgExit(fn, retVal ? retVal.id : null);
+  }
+  while (CONDITION_LADDER_END);
+  sgExit(retVal ? retVal.id : null);
   return retVal;
 }
 
 async function sgMenuAction(ctx, action) {
-  const fn = 'sgMenuAction';
-  sgEntry(fn, action);
+  sgEntry(action);
   do {
     sgCloseMenu();
     if (!chrome.runtime || !chrome.runtime.id) {
-      sgWarn(fn, 'extension context gone - refresh page');
+      sgWarn('extension context gone - refresh page');
       break;
     }
     if (action === 'remove') {
@@ -303,12 +305,12 @@ async function sgMenuAction(ctx, action) {
       break;
     }
     if (action !== 'trusted' && action !== 'blocked') {
-      sgWarn(fn, 'unknown action', action);
+      sgWarn('unknown action', action);
       break;
     }
     const e = sgEntryFromCtx(ctx);
     if (!e) {
-      sgWarn(fn, 'cannot build list entry');
+      sgWarn('cannot build list entry');
       break;
     }
     // If it was listed under a different id (e.g. handle-only), drop that first
@@ -317,13 +319,13 @@ async function sgMenuAction(ctx, action) {
     }
     await sgSetListMembership(e.id, e.entry, action);
     // storage.onChanged re-renders every tab
-  } while (false);
-  sgExit(fn);
+  }
+  while (CONDITION_LADDER_END);
+  sgExit();
 }
 
 function sgOpenMenu(badge, ctx) {
-  const fn = 'sgOpenMenu';
-  sgEntry(fn);
+  sgEntry();
   do {
     sgCloseMenu();
     if (!badge.isConnected) {
@@ -378,14 +380,14 @@ function sgOpenMenu(badge, ctx) {
     menu.style.left = Math.max(8, left) + 'px';
     menu.style.top = top + 'px';
     sgMenu = menu;
-  } while (false);
-  sgExit(fn);
+  }
+  while (CONDITION_LADDER_END);
+  sgExit();
 }
 
 /* ------------------------------------------------------------------------- */
 function sgRenderBadge(thumb, ev, ctx) {
-  const fn = 'sgRenderBadge';
-  sgEntry(fn);
+  sgEntry();
   do {
     if (!thumb || !thumb.isConnected) {
       break;
@@ -420,8 +422,9 @@ function sgRenderBadge(thumb, ev, ctx) {
     }
     thumb.classList.add('sg-host');
     thumb.appendChild(badge);
-  } while (false);
-  sgExit(fn);
+  }
+  while (CONDITION_LADDER_END);
+  sgExit();
 }
 
 function sgRenderPending(thumb) {
@@ -433,22 +436,21 @@ function sgClearBlockState(item) {
 }
 
 function sgApplyListed(item, thumb, ctx) {
-  const fn = 'sgApplyListed';
-  sgEntry(fn, ctx.hit);
+  sgEntry(ctx.hit);
   do {
     sgClearBlockState(item);
     if (ctx.hit.list === 'blocked') {
       item.classList.add(sgSettings.blockMode === 'dim' ? 'sg-blocked-dim' : 'sg-blocked-hide');
     }
     sgRenderBadge(thumb, sgEvaluateListed(ctx.hit, ctx), ctx);
-  } while (false);
-  sgExit(fn);
+  }
+  while (CONDITION_LADDER_END);
+  sgExit();
 }
 
 /* ------------------------------------------------------------------------- */
 function sgProcessItem(item) {
-  const fn = 'sgProcessItem';
-  sgEntry(fn);
+  sgEntry();
   do {
     // Skip tiles nested in another tile (new layouts wrap lockups inside rich items)
     if (item.parentElement && item.parentElement.closest(SG_ITEM_SELECTOR)) {
@@ -506,13 +508,13 @@ function sgProcessItem(item) {
       }
       sgRenderBadge(t, sgEvaluate(stats, sgSettings), ctx);
     });
-  } while (false);
-  sgExit(fn);
+  }
+  while (CONDITION_LADDER_END);
+  sgExit();
 }
 
 function sgScan() {
-  const fn = 'sgScan';
-  sgEntry(fn);
+  sgEntry();
   do {
     sgScanTimer = 0;
     if (!sgSettings.enabled) {
@@ -525,11 +527,12 @@ function sgScan() {
       try {
         sgProcessItem(item);
       } catch (e) {
-        sgWarn(fn, 'processItem threw', e);
+        sgWarn('processItem threw', e);
       }
     }
-  } while (false);
-  sgExit(fn);
+  }
+  while (CONDITION_LADDER_END);
+  sgExit();
 }
 
 function sgScheduleScan() {
@@ -542,14 +545,13 @@ function sgScheduleScan() {
 let sgLists = sgEmptyLists();
 
 async function sgLoadSettings() {
-  const fn = 'sgLoadSettings';
-  sgEntry(fn);
+  sgEntry();
   do {
     let s;
     try {
       s = await chrome.storage.sync.get(SG_DEFAULTS);
     } catch (e) {
-      sgWarn(fn, 'storage.sync.get failed', e);
+      sgWarn('storage.sync.get failed', e);
       break;
     }
     if (!s || typeof s !== 'object') {
@@ -557,8 +559,9 @@ async function sgLoadSettings() {
     }
     sgSettings = s;
     sgSetDebug(s.debug);
-  } while (false);
-  sgExit(fn);
+  }
+  while (CONDITION_LADDER_END);
+  sgExit();
 }
 
 async function sgReloadLists() {
@@ -567,8 +570,7 @@ async function sgReloadLists() {
 }
 
 async function sgInit() {
-  const fn = 'sgInit';
-  sgEntry(fn);
+  sgEntry();
   do {
     await sgLoadSettings();
     await sgReloadLists();
@@ -611,8 +613,9 @@ async function sgInit() {
     window.addEventListener('scroll', sgCloseMenu, { capture: true, passive: true });
 
     sgScan();
-  } while (false);
-  sgExit(fn);
+  }
+  while (CONDITION_LADDER_END);
+  sgExit();
 }
 
 sgInit();
